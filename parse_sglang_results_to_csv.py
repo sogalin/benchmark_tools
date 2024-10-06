@@ -9,8 +9,8 @@ prefill_pattern = r"Prefill\. latency:\s*([\d\.]+)\s*s,\s*throughput:\s*([\d\.]+
 decode_median_pattern = r"Decode\.  median latency:\s*([\d\.]+)\s*s,\s*median throughput:\s*([\d\.]+)\s*token/s"
 total_pattern = r"Total\. latency:\s*([\d\.]+)\s*s,\s*throughput:\s*([\d\.]+)\s*token/s"
 
-# Define regex to parse file names
-filename_pattern = r"(?P<model>[\w\.-]+)-result_bs(?P<batch_size>\d+)_in(?P<input>\d+)_out(?P<output>\d+)"
+# Update the filename pattern to capture company name, GPU, model (including _tp), batch size, input, and output
+filename_pattern = r"(?P<company>[\w\.-]+)_(?P<gpu>[\w\.-]+)_(?P<model>[\w\.-]+_tp\d+)_result_bs(?P<batch_size>\d+)_in(?P<input>\d+)_out(?P<output>\d+)"
 
 # Read log files and extract relevant information (only keep the second occurrence)
 def parse_log_file(file_path, file_name):
@@ -20,6 +20,8 @@ def parse_log_file(file_path, file_name):
         print(f"File name format incorrect: {file_name}")
         return None
 
+    company_name = file_info.group('company')
+    gpu_name = file_info.group('gpu')
     model_name = file_info.group('model')
     batch_size = int(file_info.group('batch_size'))
     input_size = int(file_info.group('input'))
@@ -41,6 +43,8 @@ def parse_log_file(file_path, file_name):
         if len(prefill_matches) >= 2 and len(decode_median_matches) >= 2 and len(total_matches) >= 2:
             # Collect only the second occurrence
             results.append({
+                'Company': company_name,
+                'GPU': gpu_name,
                 'Model': model_name,
                 'Batch size': batch_size,
                 'Input size': input_size,
@@ -95,7 +99,7 @@ def group_and_sort_data(data):
 def save_to_csv(data, output_file):
     # Define the column headers for the CSV file
     fieldnames = [
-        'Model', 'Batch size', 'Input size', 'Output size', 'Benchmark number',
+        'Company', 'GPU', 'Model', 'Batch size', 'Input size', 'Output size', 'Benchmark number',
         'Prefill latency (s)', 'Prefill throughput (token/s)', 
         'Decode median latency (s)', 'Decode median throughput (token/s)', 
         'Total latency (s)', 'Total throughput (token/s)'
