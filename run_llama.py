@@ -44,6 +44,7 @@ for model_path in model_paths:
                         f"--output {output_size} "
                         f"--quant fp8 "
                         f"--disable-cuda-graph "
+                        f"--enable-decode-prof "
                     )
 
                     # Command to write both the executed command and the output to the output_file
