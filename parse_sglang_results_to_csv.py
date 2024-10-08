@@ -9,8 +9,8 @@ prefill_pattern = r"Prefill\. latency:\s*([\d\.]+)\s*s,\s*throughput:\s*([\d\.]+
 decode_median_pattern = r"Decode\.  median latency:\s*([\d\.]+)\s*s,\s*median throughput:\s*([\d\.]+)\s*token/s"
 total_pattern = r"Total\. latency:\s*([\d\.]+)\s*s,\s*throughput:\s*([\d\.]+)\s*token/s"
 
-# Update the filename pattern to capture company name, GPU, model (including _tp), batch size, input, and output
-filename_pattern = r"(?P<company>[\w\.-]+)_(?P<gpu>[\w\.-]+)_(?P<model>[\w\.-]+_tp\d+)_result_bs(?P<batch_size>\d+)_in(?P<input>\d+)_out(?P<output>\d+)"
+# Update the filename pattern to capture company, GPU, model, batch size, input, and output
+filename_pattern = r"(?P<company>[\w\.-]+)_(?P<gpu>[\w\.-]+)_(?P<model>[\w\.-]+)_result_bs(?P<batch_size>\d+)_in(?P<input>\d+)_out(?P<output>\d+)"
 
 # Read log files and extract relevant information (only keep the second occurrence)
 def parse_log_file(file_path, file_name):
