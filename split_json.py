@@ -2,6 +2,7 @@ import json
 import argparse
 import tarfile
 import os
+from tqdm import tqdm  # Importing tqdm for the progress bar
 
 # Function to calculate the number of chunks based on the input file size
 def calculate_default_chunks(input_filename):
@@ -21,35 +22,56 @@ def split_trace_events(input_filename, num_chunks):
 
     # Get the total number of traceEvents
     trace_events = data['traceEvents']
+
+    # Separate header information (entries without 'ts' field) from regular traceEvents
+    headers = [event for event in trace_events if 'ts' not in event]
+    trace_events = [event for event in trace_events if 'ts' in event]
+
+    # Sort traceEvents by the 'ts' field in ascending order
+    trace_events.sort(key=lambda x: x['ts'])
+
     total_events = len(trace_events)
 
     # Calculate the number of events per chunk
     chunk_size = total_events // num_chunks
     remainder = total_events % num_chunks
 
-    # Split traceEvents into the specified number of chunks
+    # Split traceEvents into the specified number of chunks with a progress bar
     chunks = []
     start = 0
 
-    for i in range(num_chunks):
+    for i in tqdm(range(num_chunks), desc="Splitting traceEvents", unit="chunk"):
         # If there is a remainder, the first few chunks get an extra event
         end = start + chunk_size + (1 if i < remainder else 0)
         chunks.append(trace_events[start:end])
         start = end
 
-    # Save the chunks into temporary files
+    # Save the chunks into temporary files with a progress bar
     output_files = []
-    for i, chunk in enumerate(chunks):
-        split_data = {'traceEvents': chunk}
+    for i, chunk in enumerate(tqdm(chunks, desc="Writing JSON files", unit="file")):
         output_filename = f"{input_filename.split('.')[0]}_split_{i+1}.json"
         with open(output_filename, 'w') as outfile:
-            json.dump(split_data, outfile, indent=4)
+            outfile.write('{"traceEvents":[\n')
+
+            # Write header information first
+            for header in headers:
+                json_line = json.dumps(header, separators=(',', ':'))
+                outfile.write(json_line + ',\n')  # Headers get a comma after each entry
+
+            # Write each traceEvent on its own line without extra spaces
+            for j, event in enumerate(chunk):
+                json_line = json.dumps(event, separators=(',', ':'))
+                if j < len(chunk) - 1:
+                    json_line += ','  # Add a comma after each event except the last
+                outfile.write(json_line + '\n')
+
+            outfile.write(']}')
         output_files.append(output_filename)
 
     # Create a tar.gz archive of the output files
     tar_filename = f"{input_filename.split('.')[0]}_split.tar.gz"
     with tarfile.open(tar_filename, 'w:gz') as tar:
-        for output_file in output_files:
+        for output_file in tqdm(output_files, desc="Creating tar.gz", unit="file"):
             tar.add(output_file)
     # Remove the individual JSON files after compression
     for output_file in output_files:
