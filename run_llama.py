@@ -16,6 +16,16 @@ model_paths = [
 #    "amd/Meta-Llama-3.1-70B-Instruct-FP8-KV",
 #    "amd/Meta-Llama-3.1-405B-Instruct-FP8-KV"
 ]
+os.environ["SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN"] = "1"
+os.environ["NCCL_MIN_NCHANNELS"] = "112"
+os.environ["HIP_FORCE_DEV_KERNARG"] = "1"
+os.environ["MOE_PADDING"] = "1"
+os.environ["VLLM_FP8_PADDING"] = "1"
+os.environ["VLLM_FP8_ACT_PADDING"] = "1"
+os.environ["VLLM_FP8_WEIGHT_PADDING"] = "1"
+os.environ["VLLM_FP8_REDUCE_CONV"] = "1"
+os.environ["TORCHINDUCTOR_MAX_AUTOTUNE"] = "1"
+os.environ["TORCHINDUCTOR_MAX_AUTOTUNE_POINTWISE"] = "1"
 
 # Get the GPU name
 gpu_name = torch.cuda.get_device_name(0).replace(' ', '_')
@@ -36,7 +46,7 @@ for model_path in model_paths:
 
                     # Construct the command to execute
                     command = (
-                        f"HIP_FORCE_DEV_KERNARG=1 python -m sglang.bench_latency "
+                        f"python -m sglang.bench_latency "
                         f"--model {model_path} "
                         f"--tp {tp} "
                         f"--batch-size {batch_size} "
