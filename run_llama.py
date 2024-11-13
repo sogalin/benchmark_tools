@@ -16,6 +16,14 @@ model_paths = [
 #    "amd/Meta-Llama-3.1-70B-Instruct-FP8-KV",
 #    "amd/Meta-Llama-3.1-405B-Instruct-FP8-KV"
 ]
+
+os.environ["PYTORCH_TUNABLEOP_ENABLED"] = "1"
+os.environ["PYTORCH_TUNABLEOP_TUNING"] = "1"
+os.environ["PYTORCH_TUNABLEOP_FILENAME"] = "/tunableop-config.csv" 
+os.environ["PYTORCH_TUNABLEOP_VERBOSE"] = "0"
+os.environ["PYTORCH_TUNABLEOP_HIPBLASLT_ENABLED"] = "1"
+os.environ["PYTORCH_TUNABLEOP_ROCBLAS_ENABLED"] = "1"
+
 os.environ["SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN"] = "1"
 os.environ["NCCL_MIN_NCHANNELS"] = "112"
 os.environ["HIP_FORCE_DEV_KERNARG"] = "1"
