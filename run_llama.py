@@ -6,15 +6,15 @@ batch_sizes = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
 inputs = [128, 2048]
 outputs = [128, 2048]
 
-batch_sizes = [1]
-inputs = [128]
-outputs = [128]
+#batch_sizes = [1]
+#inputs = [128]
+#outputs = [128]
 
 # Define the model paths
 model_paths = [
 #    "amd/Meta-Llama-3.1-8B-Instruct-FP8-KV",
-#    "amd/Meta-Llama-3.1-70B-Instruct-FP8-KV",
-    "amd/Meta-Llama-3.1-405B-Instruct-FP8-KV"
+    "amd/Llama-3.1-70B-Instruct-FP8-KV",
+#    "amd/Meta-Llama-3.1-405B-Instruct-FP8-KV"
 ]
 
 #os.environ["PYTORCH_TUNABLEOP_ENABLED"] = "1"
@@ -34,6 +34,7 @@ os.environ["VLLM_FP8_WEIGHT_PADDING"] = "1"
 os.environ["VLLM_FP8_REDUCE_CONV"] = "1"
 os.environ["TORCHINDUCTOR_MAX_AUTOTUNE"] = "1"
 os.environ["TORCHINDUCTOR_MAX_AUTOTUNE_POINTWISE"] = "1"
+os.environ["SGLANG_SET_CPU_AFFINITY"] = "1"
 
 # Get the GPU name
 gpu_name = torch.cuda.get_device_name(0).replace(' ', '_')
@@ -43,7 +44,8 @@ for model_path in model_paths:
     model_name = model_path.split('/')[-1]  # Get the full model name from the path
 
     # Determine the TP values based on the model
-    tp_values = [8] if model_name == "Meta-Llama-3.1-405B-Instruct-FP8-KV" else [1]
+#    tp_values = [8] if model_name == "Meta-Llama-3.1-405B-Instruct-FP8-KV" else [1]
+    tp_values = [1]
 
     for tp in tp_values:
         for batch_size in batch_sizes:
@@ -54,13 +56,14 @@ for model_path in model_paths:
 
                     # Construct the command to execute
                     command = (
-                        f"python -m sglang.bench_latency "
+                        f"python -m sglang.bench_one_batch "
                         f"--model {model_path} "
                         f"--tp {tp} "
                         f"--batch-size {batch_size} "
                         f"--input {input_size} "
                         f"--output {output_size} "
-                        f"--quant fp8 "
+                        f"--quantization fp8 "
+#                        f"--enable-torch-compile "
 #                        f"--disable-cuda-graph "
 #                        f"--enable-decode-prof "
                     )
