@@ -12,7 +12,7 @@ REQUEST_RATES=(1 2 4 8 16)
 # Loop through each request rate
 for RATE in "${REQUEST_RATES[@]}"; do
     for i in {1..3}; do  # Run each rate 3 times
-        LOGFILE="sglang_client_log_${RATE}_run${i}_$TIMESTAMP.log"
+        LOGFILE="sglang_client_log_llama3_${RATE}_run${i}_$TIMESTAMP.log"
         echo "Running benchmark with request rate: $RATE (Run $i)" | tee -a "$LOGFILE"
         
         NUM_PROMPTS=$(( 300 * RATE ))
@@ -22,7 +22,6 @@ for RATE in "${REQUEST_RATES[@]}"; do
         
         CMD="python3 -m sglang.bench_serving \
             --backend sglang \
-            --tokenizer Xenova/grok-1-tokenizer \
             --dataset-name random \
             --random-input 1024 \
             --random-output 1024 \
@@ -31,7 +30,7 @@ for RATE in "${REQUEST_RATES[@]}"; do
             --output-file online.jsonl"
         
         echo "Executing: $CMD" | tee -a "$LOGFILE"
-#        eval "$CMD" 2>&1 | tee -a "$LOGFILE"
+        eval "$CMD" 2>&1 | tee -a "$LOGFILE"
     done
 done
 
