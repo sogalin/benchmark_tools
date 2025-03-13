@@ -36,4 +36,5 @@ if [ $? != 0 ] ; then
 fi
 export RPDT_FILENAME=${OUTPUT_FILE}
 export RPDT_AUTOSTART=0
-LD_PRELOAD=librocm-smi_64:librpd_tracer.so "$@"
+#LD_PRELOAD=librocm-smi_64:librpd_tracer.so "$@"
+$@

@@ -36,14 +36,14 @@ case "$MODEL" in
     MODEL_PATH="amd/Llama-3.1-70B-Instruct-FP8-KV"
     TP=8
     QUANT="fp8"
-    EXTRA_ARGS="--disable-radix-cache --cuda-graph-max-bs 1024 --mem-fraction-static 0.6"
+    EXTRA_ARGS="--cuda-graph-max-bs 1024 --mem-fraction-static 0.6"
     ;;
   "LLAMA3.1-8B")
     export RCCL_MSCCL_ENABLE=1
     MODEL_PATH="amd/Llama-3.1-8B-Instruct-FP8-KV"
     TP=1
     QUANT="fp8"
-    EXTRA_ARGS="--disable-radix-cache --cuda-graph-max-bs 1024 --mem-fraction-static 0.6"
+    EXTRA_ARGS="--cuda-graph-max-bs 1024 --mem-fraction-static 0.6"
     ;;
   *)
     echo "Unknown model name: $MODEL"
@@ -53,17 +53,16 @@ esac
 
 # Construct the command
 CMD="python3 -m sglang.launch_server \
-  --model \"$MODEL_PATH\" \
-  ${TOKENIZER_PATH:+--tokenizer-path \"$TOKENIZER_PATH\"} \
-  --tp \"$TP\" \
-  --quantization \"$QUANT\" \
+  --model $MODEL_PATH \
+  ${TOKENIZER_PATH:+--tokenizer-path $TOKENIZER_PATH} \
+  --tp $TP \
+  --quantization $QUANT \
   --trust-remote-code \
-  --attention-backend \"$ATTN_BACKEND\" \
+  --attention-backend $ATTN_BACKEND \
   $EXTRA_ARGS"
-
 # Run with or without profiling
 if [ "$ENABLE_PROFILING" == "profile" ]; then
-  ./loadTracer.sh $CMD 2>&1 | tee "$LOGFILE"
-else
-  eval $CMD 2>&1 | tee "$LOGFILE"
+  CMD="./loadTracer.sh $CMD"
 fi
+echo "CMD=$CMD"
+eval $CMD 2>&1 | tee "$LOGFILE"
