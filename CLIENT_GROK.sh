@@ -20,12 +20,7 @@ for RATE in "${REQUEST_RATES[@]}"; do
             NUM_PROMPTS=2400
         fi
         
-        CMD="python3 -m sglang.bench_serving \
-            --backend sglang \
-            --tokenizer Xenova/grok-1-tokenizer \
-            --dataset-name random \
-            --random-input 1024 \
-            --random-output 1024 \
+        CMD="python3 -m sglang.bench_serving --backend sglang --tokenizer Xenova/grok-1-tokenizer --dataset-name random --random-input 1024 --random-output 1024 \
             --num-prompts $NUM_PROMPTS \
             --request-rate $RATE \
             --output-file online.jsonl"

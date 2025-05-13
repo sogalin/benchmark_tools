@@ -23,9 +23,11 @@ ATTN_BACKEND=${2:-"aiter"}  # Default to aiter
 case "$MODEL" in
   "GROK1")
     export RCCL_MSCCL_ENABLE=0
-    export CK_MOE=1
-    export USE_INT4_WEIGHT=1
-    MODEL_PATH="/data/models/huggingface/amd--grok-1-W4A8KV8/"
+    export SGLANG_AITER_MOE=1
+#    export SGLANG_INT4_WEIGHT=0
+#    MODEL_PATH="/data/models/huggingface/hub/models--lmzheng--grok-1/snapshots/09b1f399de02e941ab338a554dd72a4a6b9ccd23/"
+    export SGLANG_INT4_WEIGHT=1
+    MODEL_PATH="/data/models/huggingface/hub/models--amd--grok-1-W4A8KV8/snapshots/f47a2b93f0215b8bb156e817a2a08fc93fffdbaa/"
     TOKENIZER_PATH="Xenova/grok-1-tokenizer"
     TP=8
     QUANT="fp8"
@@ -58,7 +60,7 @@ CMD="python3 -m sglang.launch_server \
   --tp $TP \
   --quantization $QUANT \
   --trust-remote-code \
-  --attention-backend $ATTN_BACKEND \
+  --attention-backend $ATTN_BACKEND --context-length 132072 \
   $EXTRA_ARGS"
 # Run with or without profiling
 if [ "$ENABLE_PROFILING" == "profile" ]; then
