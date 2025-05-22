@@ -19,7 +19,7 @@ QUANTIZATION="fp8"
 ATTENTION_BACKEND="aiter"  
   
 # Define an array of input sizes  
-INPUT_SIZES=(8192 16384 32768 65536 131072)
+INPUT_SIZES=(1024 2048 4096 8192 16384 32768 65536 131072)
   
 # Loop through each input size and run the benchmark  
 for INPUT_SIZE in "${INPUT_SIZES[@]}"  

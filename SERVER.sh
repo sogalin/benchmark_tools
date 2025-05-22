@@ -31,7 +31,7 @@ case "$MODEL" in
     TOKENIZER_PATH="Xenova/grok-1-tokenizer"
     TP=8
     QUANT="fp8"
-    EXTRA_ARGS=""
+    EXTRA_ARGS=" --mem-fraction-static 0.5"
     ;;
   "LLAMA3.1-70B")
     export RCCL_MSCCL_ENABLE=1
@@ -60,7 +60,7 @@ CMD="python3 -m sglang.launch_server \
   --tp $TP \
   --quantization $QUANT \
   --trust-remote-code \
-  --attention-backend $ATTN_BACKEND --context-length 132072 \
+  --attention-backend $ATTN_BACKEND \
   $EXTRA_ARGS"
 # Run with or without profiling
 if [ "$ENABLE_PROFILING" == "profile" ]; then

@@ -1,8 +1,8 @@
 diff --git a/python/sglang/bench_one_batch.py b/python/sglang/bench_one_batch.py
-index de846066..ca021280 100644
+index f8c67c8f..c62396a3 100644
 --- a/python/sglang/bench_one_batch.py
 +++ b/python/sglang/bench_one_batch.py
-@@ -73,6 +73,7 @@ from sglang.srt.utils import (
+@@ -75,6 +75,7 @@ from sglang.srt.utils import (
      suppress_other_loggers,
  )
  
@@ -10,20 +10,21 @@ index de846066..ca021280 100644
  
  @dataclasses.dataclass
  class BenchArgs:
-@@ -84,6 +85,9 @@ class BenchArgs:
-     correctness_test: bool = False
-     # This is only used for correctness test
-     cut_len: int = 4
-+    enable_prefill_prof: bool = False
-+    enable_decode_prof: bool = False
-+
+@@ -90,6 +91,10 @@ class BenchArgs:
      profile: bool = False
      profile_filename_prefix: str = "profile"
  
-@@ -104,6 +108,15 @@ class BenchArgs:
++    enable_prefill_prof: bool = False
++    enable_decode_prof: bool = False
++
++
+     @staticmethod
+     def add_cli_args(parser: argparse.ArgumentParser):
+         parser.add_argument("--run-name", type=str, default=BenchArgs.run_name)
+@@ -124,6 +129,15 @@ class BenchArgs:
+             '"[profile_filename_prefix]_batch[batch_size]_input[input_len]_output[output_len].trace.json.gz"',
          )
-         parser.add_argument("--correctness-test", action="store_true")
-         parser.add_argument("--cut-len", type=int, default=BenchArgs.cut_len)
+ 
 +        parser.add_argument(
 +            "--enable-decode-prof",
 +            action='store_true',
@@ -33,28 +34,18 @@ index de846066..ca021280 100644
 +            action='store_true',
 +            help="enable prefill profiler.")
 +
-         parser.add_argument(
-             "--profile", action="store_true", help="Use Torch Profiler."
-         )
-@@ -306,16 +319,7 @@ def synchronize(device):
+     @classmethod
+     def from_cli_args(cls, args: argparse.Namespace):
+         # use the default value's type to cast the args into correct types.
+@@ -327,6 +341,7 @@ def synchronize(device):
  
  
  def latency_test_run_once(
--    run_name,
--    model_runner,
--    rank_print,
--    reqs,
--    batch_size,
--    input_len,
--    output_len,
--    device,
--    profile,
--    profile_filename_prefix,
-+    is_warm_up, enable_prefill_prof, enable_decode_prof, tp_rank, run_name, model_runner, rank_print, reqs, batch_size, input_len, output_len, device, profile, profile_filename_prefix,
- ):
-     max_batch_size = model_runner.max_total_num_tokens // (input_len + output_len)
-     if batch_size > max_batch_size:
-@@ -351,8 +355,14 @@ def latency_test_run_once(
++    is_warm_up, enable_prefill_prof, enable_decode_prof, tp_rank,
+     run_name,
+     model_runner,
+     rank_print,
+@@ -373,8 +388,14 @@ def latency_test_run_once(
      # Prefill
      synchronize(device)
      tic = time.time()
@@ -69,7 +60,7 @@ index de846066..ca021280 100644
      prefill_latency = time.time() - tic
      tot_latency += prefill_latency
      throughput = input_len * batch_size / prefill_latency
-@@ -364,6 +374,11 @@ def latency_test_run_once(
+@@ -386,6 +407,11 @@ def latency_test_run_once(
  
      # Decode
      decode_latencies = []
@@ -81,16 +72,16 @@ index de846066..ca021280 100644
      for i in range(output_len - 1):
          synchronize(device)
          tic = time.time()
-@@ -377,6 +392,8 @@ def latency_test_run_once(
+@@ -399,6 +425,8 @@ def latency_test_run_once(
              rank_print(
-                 f"Decode.  latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
+                 f"Decode {i}. Batch size: {batch_size}, latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
              )
 +    if enable_decode_prof and not is_warm_up and tp_rank == 0:
 +        decode_profile.stop()
  
      if profile:
          profiler.stop()
-@@ -430,6 +447,10 @@ def latency_test(
+@@ -452,6 +480,10 @@ def latency_test(
      # Warm up
      rank_print("Warmup ...")
      latency_test_run_once(
@@ -101,7 +92,7 @@ index de846066..ca021280 100644
          bench_args.run_name,
          model_runner,
          rank_print,
-@@ -451,6 +472,10 @@ def latency_test(
+@@ -474,6 +506,10 @@ def latency_test(
      ):
          reqs = prepare_synthetic_inputs_for_latency_test(bs, il)
          ret = latency_test_run_once(
@@ -112,16 +103,7 @@ index de846066..ca021280 100644
              bench_args.run_name,
              model_runner,
              rank_print,
-@@ -459,7 +484,7 @@ def latency_test(
-             il,
-             ol,
-             server_args.device,
--            bench_args.profile if tp_rank == 0 else None,
-+            bench_args.profile if tp_rank == 0 else False,
-             bench_args.profile_filename_prefix,
-         )
-         if ret is not None:
-@@ -473,6 +498,12 @@ def latency_test(
+@@ -500,6 +536,13 @@ def latency_test(
  
  
  def main(server_args, bench_args):
@@ -131,6 +113,8 @@ index de846066..ca021280 100644
 +
 +        # Create first instance (this loads the profiler and creates the file)
 +        profile = rpdTracerControl()
-     _set_envs_and_config(server_args)
++
+     server_args.cuda_graph_max_bs = max(bench_args.batch_size)
  
-     if server_args.model_path:
+     _set_envs_and_config(server_args)
+
