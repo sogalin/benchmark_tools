@@ -1,0 +1,24 @@
+From 68bf373037c8bb8836df22a59c58680fe351dd8b Mon Sep 17 00:00:00 2001
+From: "Lin, Soga" <soga.lin@amd.com>
+Date: Thu, 29 May 2025 07:13:35 +0000
+Subject: [PATCH] Add shape size profiling for MoE
+
+---
+ python/sglang/srt/layers/quantization/fp8.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/python/sglang/srt/layers/quantization/fp8.py b/python/sglang/srt/layers/quantization/fp8.py
+index ae40db01..5321a54c 100644
+--- a/python/sglang/srt/layers/quantization/fp8.py
++++ b/python/sglang/srt/layers/quantization/fp8.py
+@@ -974,6 +974,7 @@ class Fp8MoEMethod:
+         if use_hip_int4:
+             # TODO: add triton kernel and add check use_aiter_moe
+             assert not no_combine, f"{no_combine=} is not supported."
++            log_info_on_rank0(logger, f'x.shape: {x.shape}')
+             return ck_moe_2stages(
+                 x,
+                 layer.w13_weight,
+-- 
+2.34.1
+
