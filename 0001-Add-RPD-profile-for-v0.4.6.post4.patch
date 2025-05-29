@@ -1,0 +1,331 @@
+From e280fb949e1b6c0e256426dda3bdde32c915230e Mon Sep 17 00:00:00 2001
+From: "Lin, Soga" <soga.lin@amd.com>
+Date: Thu, 29 May 2025 02:56:39 +0000
+Subject: [PATCH] Add RPD profile for v0.4.6.post4.
+
+---
+ python/sglang/bench_one_batch.py        |  43 ++++++
+ python/sglang/srt/managers/scheduler.py | 179 +++++++++++++-----------
+ 2 files changed, 138 insertions(+), 84 deletions(-)
+
+diff --git a/python/sglang/bench_one_batch.py b/python/sglang/bench_one_batch.py
+index f8c67c8f..c62396a3 100644
+--- a/python/sglang/bench_one_batch.py
++++ b/python/sglang/bench_one_batch.py
+@@ -75,6 +75,7 @@ from sglang.srt.utils import (
+     suppress_other_loggers,
+ )
+ 
++from rpdTracerControl import rpdTracerControl
+ 
+ @dataclasses.dataclass
+ class BenchArgs:
+@@ -90,6 +91,10 @@ class BenchArgs:
+     profile: bool = False
+     profile_filename_prefix: str = "profile"
+ 
++    enable_prefill_prof: bool = False
++    enable_decode_prof: bool = False
++
++
+     @staticmethod
+     def add_cli_args(parser: argparse.ArgumentParser):
+         parser.add_argument("--run-name", type=str, default=BenchArgs.run_name)
+@@ -124,6 +129,15 @@ class BenchArgs:
+             '"[profile_filename_prefix]_batch[batch_size]_input[input_len]_output[output_len].trace.json.gz"',
+         )
+ 
++        parser.add_argument(
++            "--enable-decode-prof",
++            action='store_true',
++            help="enable decode profiler.")
++        parser.add_argument(
++            "--enable-prefill-prof",
++            action='store_true',
++            help="enable prefill profiler.")
++
+     @classmethod
+     def from_cli_args(cls, args: argparse.Namespace):
+         # use the default value's type to cast the args into correct types.
+@@ -327,6 +341,7 @@ def synchronize(device):
+ 
+ 
+ def latency_test_run_once(
++    is_warm_up, enable_prefill_prof, enable_decode_prof, tp_rank,
+     run_name,
+     model_runner,
+     rank_print,
+@@ -373,8 +388,14 @@ def latency_test_run_once(
+     # Prefill
+     synchronize(device)
+     tic = time.time()
++    if enable_prefill_prof and not is_warm_up and tp_rank == 0:
++        print("Start profile Prefill")
++        prefill_profile = rpdTracerControl()
++        prefill_profile.start()
+     next_token_ids, _, batch = extend(reqs, model_runner)
+     synchronize(device)
++    if enable_prefill_prof and not is_warm_up and tp_rank == 0:
++        prefill_profile.stop()
+     prefill_latency = time.time() - tic
+     tot_latency += prefill_latency
+     throughput = input_len * batch_size / prefill_latency
+@@ -386,6 +407,11 @@ def latency_test_run_once(
+ 
+     # Decode
+     decode_latencies = []
++    if enable_decode_prof and not is_warm_up and tp_rank == 0:
++        print("Start profile Decode")
++        # Create first instance (this loads the profiler and creates the file)
++        decode_profile = rpdTracerControl()
++        decode_profile.start()
+     for i in range(output_len - 1):
+         synchronize(device)
+         tic = time.time()
+@@ -399,6 +425,8 @@ def latency_test_run_once(
+             rank_print(
+                 f"Decode {i}. Batch size: {batch_size}, latency: {latency:6.5f} s, throughput: {throughput:9.2f} token/s"
+             )
++    if enable_decode_prof and not is_warm_up and tp_rank == 0:
++        decode_profile.stop()
+ 
+     if profile:
+         profiler.stop()
+@@ -452,6 +480,10 @@ def latency_test(
+     # Warm up
+     rank_print("Warmup ...")
+     latency_test_run_once(
++        True,
++        bench_args.enable_prefill_prof,
++        bench_args.enable_decode_prof,
++        tp_rank,
+         bench_args.run_name,
+         model_runner,
+         rank_print,
+@@ -474,6 +506,10 @@ def latency_test(
+     ):
+         reqs = prepare_synthetic_inputs_for_latency_test(bs, il)
+         ret = latency_test_run_once(
++            False,
++            bench_args.enable_prefill_prof,
++            bench_args.enable_decode_prof,
++            tp_rank,
+             bench_args.run_name,
+             model_runner,
+             rank_print,
+@@ -500,6 +536,13 @@ def latency_test(
+ 
+ 
+ def main(server_args, bench_args):
++    if bench_args.enable_prefill_prof or bench_args.enable_decode_prof:
++        # Optionally call this class method before creating first instance
++        rpdTracerControl.setFilename(name = "trace.rpd", append=False)
++
++        # Create first instance (this loads the profiler and creates the file)
++        profile = rpdTracerControl()
++
+     server_args.cuda_graph_max_bs = max(bench_args.batch_size)
+ 
+     _set_envs_and_config(server_args)
+diff --git a/python/sglang/srt/managers/scheduler.py b/python/sglang/srt/managers/scheduler.py
+index 1178eec5..c17f8cda 100644
+--- a/python/sglang/srt/managers/scheduler.py
++++ b/python/sglang/srt/managers/scheduler.py
+@@ -141,6 +141,7 @@ from sglang.srt.utils import (
+     suppress_other_loggers,
+ )
+ from sglang.utils import TypeBasedDispatcher, get_exception_traceback
++from rpdTracerControl import rpdTracerControl
+ 
+ expert_distribution_recorder = ExpertDistributionRecorder()
+ 
+@@ -2064,92 +2065,102 @@ class Scheduler(
+         record_shapes: Optional[bool],
+         profile_id: Optional[str],
+     ) -> None:
+-        if self.profiler_activities:
+-            return ProfileReqOutput(
+-                success=False,
+-                message="Profiling is already in progress. Call /stop_profile first.",
+-            )
+-
+-        if output_dir is None:
+-            output_dir = os.getenv("SGLANG_TORCH_PROFILER_DIR", "/tmp")
+-        if activities is None:
+-            activities = ["CPU", "GPU"]
+-
+-        self.torch_profiler_output_dir = output_dir
+-        self.profiler_activities = activities
+-        self.profiler_id = profile_id
+-        logger.info(
+-            "Profiling starts. Traces will be saved to: %s (with id %s)",
+-            self.torch_profiler_output_dir,
+-            self.profiler_id,
+-        )
+-
+-        activity_map = {
+-            "CPU": torch.profiler.ProfilerActivity.CPU,
+-            "GPU": torch.profiler.ProfilerActivity.CUDA,
+-        }
+-        torchprof_activities = [
+-            activity_map[a] for a in activities if a in activity_map
+-        ]
+-
+-        if torchprof_activities:
+-            self.torch_profiler = torch.profiler.profile(
+-                activities=torchprof_activities,
+-                with_stack=with_stack if with_stack is not None else True,
+-                record_shapes=record_shapes if record_shapes is not None else False,
+-            )
+-            self.torch_profiler.start()
+-
+-        if "MEM" in activities:
+-            torch.cuda.memory._record_memory_history(max_entries=100000)
+-
+-        if "CUDA_PROFILER" in activities:
+-            torch.cuda.cudart().cudaProfilerStart()
+-
+-        if num_steps:
+-            self.profiler_target_forward_ct = self.forward_ct + num_steps
+-            # The caller will be notified when reaching profiler_target_forward_ct
+-        else:
+-            self.profiler_target_forward_ct = None
+-            return ProfileReqOutput(success=True, message="Succeeded")
++        if self.tp_rank == 0:
++            self.rpd = rpdTracerControl()
++            self.rpd.start()
++            logger.info("rpd is enable")
++        return ProfileReqOutput(success=True, message="Succeeded")
++#        if self.profiler_activities:
++#            return ProfileReqOutput(
++#                success=False,
++#                message="Profiling is already in progress. Call /stop_profile first.",
++#            )
++#
++#        if output_dir is None:
++#            output_dir = os.getenv("SGLANG_TORCH_PROFILER_DIR", "/tmp")
++#        if activities is None:
++#            activities = ["CPU", "GPU"]
++#
++#        self.torch_profiler_output_dir = output_dir
++#        self.profiler_activities = activities
++#        self.profiler_id = profile_id
++#        logger.info(
++#            "Profiling starts. Traces will be saved to: %s (with id %s)",
++#            self.torch_profiler_output_dir,
++#            self.profiler_id,
++#        )
++#
++#        activity_map = {
++#            "CPU": torch.profiler.ProfilerActivity.CPU,
++#            "GPU": torch.profiler.ProfilerActivity.CUDA,
++#        }
++#        torchprof_activities = [
++#            activity_map[a] for a in activities if a in activity_map
++#        ]
++#
++#        if torchprof_activities:
++#            self.torch_profiler = torch.profiler.profile(
++#                activities=torchprof_activities,
++#                with_stack=with_stack if with_stack is not None else True,
++#                record_shapes=record_shapes if record_shapes is not None else False,
++#            )
++#            self.torch_profiler.start()
++#
++#        if "MEM" in activities:
++#            torch.cuda.memory._record_memory_history(max_entries=100000)
++#
++#        if "CUDA_PROFILER" in activities:
++#            torch.cuda.cudart().cudaProfilerStart()
++#
++#        if num_steps:
++#            self.profiler_target_forward_ct = self.forward_ct + num_steps
++#            # The caller will be notified when reaching profiler_target_forward_ct
++#        else:
++#            self.profiler_target_forward_ct = None
++#            return ProfileReqOutput(success=True, message="Succeeded")
+ 
+     def stop_profile(self) -> None:
+-        if self.profiler_activities is None:
+-            return
+-
+-        logger.info("Stop profiling...")
+-        if self.torch_profiler is not None:
+-            self.torch_profiler.stop()
+-            self.torch_profiler.export_chrome_trace(
+-                os.path.join(
+-                    self.torch_profiler_output_dir,
+-                    self.profiler_id + f"-TP-{self.tp_rank}" + ".trace.json.gz",
+-                )
+-            )
+-
+-        if "MEM" in self.profiler_activities:
+-            memory_profile_path = os.path.join(
+-                self.torch_profiler_output_dir,
+-                self.profiler_id + f"-TP-{self.tp_rank}-memory" + ".pickle",
+-            )
+-            torch.cuda.memory._dump_snapshot(memory_profile_path)
+-            torch.cuda.memory._record_memory_history(enabled=None)
+-
+-        if "CUDA_PROFILER" in self.profiler_activities:
+-            torch.cuda.cudart().cudaProfilerStop()
+-
+-        logger.info(
+-            "Profiling done. Traces are saved to: %s",
+-            self.torch_profiler_output_dir,
+-        )
+-        self.torch_profiler = None
+-        self.torch_profiler_output_dir = None
+-        self.profiler_activities = None
+-
+-        if self.profiler_target_forward_ct:
+-            self.send_to_tokenizer.send_pyobj(
+-                ProfileReqOutput(success=True, message="Succeeded.")
+-            )
++        if self.tp_rank == 0:
++            self.rpd.stop()
++            self.rpd.flush()
++            logger.info("rpd is done")
++        return ProfileReqOutput(success=True, message="Succeeded")        
++#        if self.profiler_activities is None:
++#            return
++#
++#        logger.info("Stop profiling...")
++#        if self.torch_profiler is not None:
++#            self.torch_profiler.stop()
++#            self.torch_profiler.export_chrome_trace(
++#                os.path.join(
++#                    self.torch_profiler_output_dir,
++#                    self.profiler_id + f"-TP-{self.tp_rank}" + ".trace.json.gz",
++#                )
++#            )
++#
++#        if "MEM" in self.profiler_activities:
++#            memory_profile_path = os.path.join(
++#                self.torch_profiler_output_dir,
++#                self.profiler_id + f"-TP-{self.tp_rank}-memory" + ".pickle",
++#            )
++#            torch.cuda.memory._dump_snapshot(memory_profile_path)
++#            torch.cuda.memory._record_memory_history(enabled=None)
++#
++#        if "CUDA_PROFILER" in self.profiler_activities:
++#            torch.cuda.cudart().cudaProfilerStop()
++#
++#        logger.info(
++#            "Profiling done. Traces are saved to: %s",
++#            self.torch_profiler_output_dir,
++#        )
++#        self.torch_profiler = None
++#        self.torch_profiler_output_dir = None
++#        self.profiler_activities = None
++#
++#        if self.profiler_target_forward_ct:
++#            self.send_to_tokenizer.send_pyobj(
++#                ProfileReqOutput(success=True, message="Succeeded.")
++#            )
+ 
+     def expert_distribution_handle(self, recv_req: ExpertDistributionReq):
+         if recv_req == ExpertDistributionReq.START_RECORD:
+-- 
+2.34.1
+
