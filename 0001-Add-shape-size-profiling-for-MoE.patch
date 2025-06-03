@@ -1,24 +1,36 @@
-From 68bf373037c8bb8836df22a59c58680fe351dd8b Mon Sep 17 00:00:00 2001
+From 803f87259658f24ab1bcc20091d8d3de911f224f Mon Sep 17 00:00:00 2001
 From: "Lin, Soga" <soga.lin@amd.com>
-Date: Thu, 29 May 2025 07:13:35 +0000
-Subject: [PATCH] Add shape size profiling for MoE
+Date: Tue, 3 Jun 2025 08:48:54 +0000
+Subject: [PATCH] Add MoE shape size.
 
 ---
- python/sglang/srt/layers/quantization/fp8.py | 1 +
- 1 file changed, 1 insertion(+)
+ python/sglang/srt/model_executor/model_runner.py | 6 ++++++
+ 1 file changed, 6 insertions(+)
 
-diff --git a/python/sglang/srt/layers/quantization/fp8.py b/python/sglang/srt/layers/quantization/fp8.py
-index ae40db01..5321a54c 100644
---- a/python/sglang/srt/layers/quantization/fp8.py
-+++ b/python/sglang/srt/layers/quantization/fp8.py
-@@ -974,6 +974,7 @@ class Fp8MoEMethod:
-         if use_hip_int4:
-             # TODO: add triton kernel and add check use_aiter_moe
-             assert not no_combine, f"{no_combine=} is not supported."
-+            log_info_on_rank0(logger, f'x.shape: {x.shape}')
-             return ck_moe_2stages(
-                 x,
-                 layer.w13_weight,
+diff --git a/python/sglang/srt/model_executor/model_runner.py b/python/sglang/srt/model_executor/model_runner.py
+index 812f69bc..549f0ea2 100644
+--- a/python/sglang/srt/model_executor/model_runner.py
++++ b/python/sglang/srt/model_executor/model_runner.py
+@@ -92,6 +92,7 @@ from sglang.srt.utils import (
+     monkey_patch_vllm_gguf_config,
+     set_cpu_offload_max_bytes,
+     set_cuda_arch,
++    log_info_on_rank0,
+ )
+ 
+ is_hip_ = is_hip()
+@@ -1132,6 +1133,11 @@ class ModelRunner:
+             and self.cuda_graph_runner
+             and self.cuda_graph_runner.can_run(forward_batch)
+         )
++
++        if forward_batch.forward_mode.is_prefill():
++            log_info_on_rank0(logger, f'\nprefill - batch_size = {forward_batch.batch_size}, {forward_batch.input_ids.shape[0]}')
++        if forward_batch.forward_mode.is_decode():
++            log_info_on_rank0(logger, f'\ndecode - batch_size = {forward_batch.batch_size}, {forward_batch.input_ids.shape[0]}')
+         if can_run_cuda_graph:
+             ret = self.cuda_graph_runner.replay(
+                 forward_batch,
 -- 
 2.34.1
 

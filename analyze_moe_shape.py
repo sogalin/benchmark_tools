@@ -1,49 +1,52 @@
-import re  
-from collections import Counter  
 import argparse  
 import csv  
+from collections import defaultdict  
   
-def count_shapes(log_file_path):  
-    pattern = re.compile(r"x\.shape: torch\.Size\(\[(\d+),\s*(\d+)\]\)")  
-    shape_counter = Counter()  
+def count_batch_sizes(log_file_path):  
+    prefill_counter = defaultdict(int)  
+    decode_counter = defaultdict(int)  
       
     with open(log_file_path, 'r') as file:  
         for line in file:  
-            match = pattern.search(line)  
-            if match:  
-                shape = (int(match.group(1)), int(match.group(2)))  
-                shape_counter[shape] += 1  
+            line = line.strip()  
+            if 'prefill - batch_size =' in line:  
+                parts = line.split('prefill - batch_size = ')[1].split(',')  
+                token_length = int(parts[1].strip())  # 使用 token length 來表示 total batch size  
+                prefill_counter[token_length] += 1  
+            elif 'decode - batch_size =' in line:  
+                parts = line.split('decode - batch_size = ')[1].split(',')  
+                batch_size = int(parts[0].strip())  
+                total_batch_size = batch_size * 1  # 對應 total batch size  
+                decode_counter[total_batch_size] += 1  
   
-    return shape_counter  
+    return prefill_counter, decode_counter  
   
-def write_to_csv(shape_counts, output_file):  
-    # Sort shapes based on the X-dimension  
-    sorted_shapes = sorted(shape_counts.items(), key=lambda item: item[0][0])  
-      
+def write_to_csv(prefill_counts, decode_counts, output_file):  
     with open(output_file, 'w', newline='') as csvfile:  
         writer = csv.writer(csvfile)  
         # Write header  
-        writer.writerow(['X-Dimension', 'Count'])  
-        # Write sorted data  
-        for shape, count in sorted_shapes:  
-            writer.writerow([shape[0], count])  
+        writer.writerow(['Category', 'Total Batch Size', 'Count'])  
+  
+        # Write prefill data  
+        for total_batch_size, count in sorted(prefill_counts.items()):  
+            writer.writerow(['Prefill', total_batch_size, count])  
+  
+        # Write decode data  
+        for total_batch_size, count in sorted(decode_counts.items()):  
+            writer.writerow(['Decode', total_batch_size, count])  
   
 def main():  
-    # Set up argument parser  
-    parser = argparse.ArgumentParser(description='Count shape occurrences in log file.')  
+    parser = argparse.ArgumentParser(description='Count batch size occurrences in log file.')  
     parser.add_argument('log_file', type=str,   
                         help='Path to the log file to be processed.')  
     parser.add_argument('output_file', type=str,   
                         help='Path to the output CSV file.')  
   
-    # Parse arguments  
     args = parser.parse_args()  
   
-    # Count the shapes  
-    shape_counts = count_shapes(args.log_file)  
+    prefill_counts, decode_counts = count_batch_sizes(args.log_file)  
   
-    # Write the results to a CSV file  
-    write_to_csv(shape_counts, args.output_file)  
+    write_to_csv(prefill_counts, decode_counts, args.output_file)  
   
 if __name__ == '__main__':  
     main()  
