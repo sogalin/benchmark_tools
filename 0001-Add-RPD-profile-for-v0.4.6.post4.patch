@@ -286,7 +286,7 @@ index 1178eec5..c17f8cda 100644
 +            self.rpd.stop()
 +            self.rpd.flush()
 +            logger.info("rpd is done")
-+        return ProfileReqOutput(success=True, message="Succeeded")        
++        return
 +#        if self.profiler_activities is None:
 +#            return
 +#
