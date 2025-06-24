@@ -3,6 +3,7 @@ import torch
 
 # Settings
 batch_sizes = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+#batch_sizes = [1024]
 #inputs = [128, 2048]
 #outputs = [128, 2048]
 inputs = [256]
@@ -32,7 +33,7 @@ for tp in tp_values:
 
                 # Construct the command to execute
                 command = (
-                    f"RCCL_MSCCL_ENABLE=0 SGLANG_AITER_MOE=1 SGLANG_INT4_WEIGHT=1 "
+                    f"RCCL_MSCCL_ENABLE=0 SGLANG_AITER_MOE=1 SGLANG_USE_AITER=1 SGLANG_INT4_WEIGHT=1 "
                     f"python -m sglang.bench_one_batch "
                     f"--batch-size {batch_size} "
                     f"--input {input_size} "
